@@ -30,16 +30,40 @@ def shutdown() -> None:
         scheduler.shutdown(wait=False)
 
 
+@app.get("/")
+def read_root():
+    return {
+        "message": "Italian Flashcard Service is running!",
+        "endpoints": {
+            "health": "/health",
+            "generate_now_get": "/flashcards/generate-now (GET)",
+            "list_flashcards": "/flashcards"
+        },
+        "config_debug": {
+            "is_vercel": settings.is_vercel,
+            "db_path": settings.db_path,
+            "has_openai": bool(settings.openai_api_key),
+            "has_telegram_token": bool(settings.telegram_bot_token),
+            "chat_id": settings.telegram_chat_id[:5] + "..." if settings.telegram_chat_id else None
+        }
+    }
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/flashcards/generate-now")
 @app.post("/flashcards/generate-now")
 def generate_now() -> dict:
+    print("Manual trigger: Generating flashcard...")
     try:
-        return create_and_send_daily_flashcard()
+        result = create_and_send_daily_flashcard()
+        print(f"Success: Sent {result['italian_text']}")
+        return {"status": "success", "data": result}
     except Exception as exc:
+        print(f"Error during manual trigger: {exc}")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

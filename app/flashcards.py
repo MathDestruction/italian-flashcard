@@ -80,11 +80,16 @@ def build_linguistic_content(term: str) -> dict[str, str]:
             "english_translation": "Translation unavailable (set OPENAI_API_KEY).",
         }
 
-    client = OpenAI(api_key=settings.openai_api_key)
     prompt = (
         "You are helping beginners learn Italian. "
         "Return strict JSON with keys italian_text, phonetic, english_translation. "
         f"Use this Italian word/phrase: {term}."
+    )
+    # Create client with specific timeout and NO retries to avoid Vercel timeout loop
+    client = OpenAI(
+        api_key=settings.openai_api_key,
+        timeout=8.0,
+        max_retries=0
     )
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -114,7 +119,11 @@ def generate_image_for_term(term: str) -> tuple[str | None, str | None, str]:
         return None, None, prompt
 
     # This part takes 15-30 seconds
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = OpenAI(
+        api_key=settings.openai_api_key,
+        timeout=30.0,
+        max_retries=0
+    )
     try:
         result = client.images.generate(
             model=settings.image_model,

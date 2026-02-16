@@ -36,6 +36,7 @@ def read_root():
         "message": "Italian Flashcard Service is running!",
         "endpoints": {
             "health": "/health",
+            "diagnostics": "/diagnostics (Test each component)",
             "generate_now_get": "/flashcards/generate-now (GET)",
             "list_flashcards": "/flashcards"
         },
@@ -70,3 +71,10 @@ def generate_now() -> dict:
 @app.get("/flashcards")
 def get_flashcards(limit: int = 100) -> dict:
     return {"items": list_flashcards(limit=limit)}
+
+
+@app.get("/diagnostics")
+def diagnostics() -> dict:
+    """Run diagnostic tests on all components."""
+    from app.diagnostics import run_all_diagnostics
+    return run_all_diagnostics()

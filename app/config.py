@@ -8,19 +8,26 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class Settings:
-    db_path: str = os.getenv("DB_PATH", "flashcards.db")
-    timezone: str = os.getenv("TIMEZONE", "Africa/Johannesburg")  # Cape Town timezone
+    # On Vercel, we must write to /tmp
+    is_vercel: bool = os.getenv("VERCEL") == "1"
+    
+    db_path: str = os.getenv("DB_PATH", "/tmp/flashcards.db" if os.getenv("VERCEL") == "1" else "flashcards.db")
+    timezone: str = os.getenv("TIMEZONE", "Africa/Johannesburg")
     schedule_hour: int = int(os.getenv("SCHEDULE_HOUR", "8"))
     schedule_minute: int = int(os.getenv("SCHEDULE_MINUTE", "0"))
     beginner_terms_file: str = os.getenv("BEGINNER_TERMS_FILE", "data/beginner_terms.json")
 
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
-    google_api_key: str | None = os.getenv("GOOGLE_API_KEY") # For Nano Banana
-    image_model: str = os.getenv("IMAGE_MODEL", "gpt-image-2") # Updated to user specified GPT Image 2
+    google_api_key: str | None = os.getenv("GOOGLE_API_KEY")
+    image_model: str = os.getenv("IMAGE_MODEL", "gpt-image-2")
     image_size: str = os.getenv("IMAGE_SIZE", "1024x1024")
 
     telegram_bot_token: str | None = os.getenv("TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str | None = os.getenv("TELEGRAM_CHAT_ID")
+
+    @property
+    def images_dir(self) -> str:
+        return "/tmp/generated_images" if self.is_vercel else "generated_images"
 
 
 settings = Settings()

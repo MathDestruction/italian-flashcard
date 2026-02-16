@@ -114,26 +114,33 @@ def generate_image_for_term(term: str) -> tuple[str | None, str | None, str]:
         return None, None, prompt
 
     client = OpenAI(api_key=settings.openai_api_key)
-    # Defaulting to dall-e-3 for better results as discussed
-    result = client.images.generate(
-        model=settings.image_model,
-        prompt=prompt,
-        size=settings.image_size,
-        response_format="b64_json"
-    )
+    try:
+        result = client.images.generate(
+            model=settings.image_model,
+            prompt=prompt,
+            size=settings.image_size,
+            response_format="b64_json"
+        )
+    except Exception as e:
+        print(f"Error with model {settings.image_model}: {e}. Falling back to dall-e-3.")
+        result = client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size=settings.image_size,
+            response_format="b64_json"
+        )
 
     img_b64 = result.data[0].b64_json if result.data else None
     if not img_b64:
         return None, None, prompt
 
-    output_dir = Path("generated_images")
-    output_dir.mkdir(exist_ok=True)
+    output_dir = Path(settings.images_dir)
+    output_dir.mkdir(exist_ok=True, parents=True)
     filename = f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{_slugify(term)}.png"
     file_path = output_dir / filename
     file_path.write_bytes(base64.b64decode(img_b64))
 
     # Return (Remote URL, Local Path, Prompt)
-    # dall-e-3 in b64 mode doesn't return a URL, we return the local path for upload
     return None, str(file_path), prompt
 
 

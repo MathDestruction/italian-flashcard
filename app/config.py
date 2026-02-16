@@ -17,13 +17,13 @@ class Settings:
     schedule_minute: int = int(os.getenv("SCHEDULE_MINUTE", "0"))
     beginner_terms_file: str = os.getenv("BEGINNER_TERMS_FILE", "data/beginner_terms.json")
 
-    openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
-    google_api_key: str | None = os.getenv("GOOGLE_API_KEY")
-    image_model: str = os.getenv("IMAGE_MODEL", "gpt-image-2")
-    image_size: str = os.getenv("IMAGE_SIZE", "1024x1024")
+    openai_api_key: str | None = os.getenv("OPENAI_API_KEY").strip() if os.getenv("OPENAI_API_KEY") else None
+    google_api_key: str | None = os.getenv("GOOGLE_API_KEY").strip() if os.getenv("GOOGLE_API_KEY") else None
+    image_model: str = os.getenv("IMAGE_MODEL", "gpt-image-2").strip()
+    image_size: str = os.getenv("IMAGE_SIZE", "1024x1024").strip()
 
-    telegram_bot_token: str | None = os.getenv("TELEGRAM_BOT_TOKEN")
-    telegram_chat_id: str | None = os.getenv("TELEGRAM_CHAT_ID")
+    telegram_bot_token: str | None = os.getenv("TELEGRAM_BOT_TOKEN").strip() if os.getenv("TELEGRAM_BOT_TOKEN") else None
+    telegram_chat_id: str | None = os.getenv("TELEGRAM_CHAT_ID").strip() if os.getenv("TELEGRAM_CHAT_ID") else None
 
     @property
     def images_dir(self) -> str:

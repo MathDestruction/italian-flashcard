@@ -1,0 +1,12 @@
+[
+  {"italian_text": "Ciao", "category": "greetings"},
+  {"italian_text": "Grazie", "category": "politeness"},
+  {"italian_text": "Per favore", "category": "politeness"},
+  {"italian_text": "Buongiorno", "category": "greetings"},
+  {"italian_text": "Buonasera", "category": "greetings"},
+  {"italian_text": "Come stai?", "category": "conversation"},
+  {"italian_text": "Mi chiamo...", "category": "conversation"},
+  {"italian_text": "Dov'è il bagno?", "category": "travel"},
+  {"italian_text": "Quanto costa?", "category": "shopping"},
+  {"italian_text": "Arrivederci", "category": "greetings"}
+]

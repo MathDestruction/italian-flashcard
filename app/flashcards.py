@@ -110,15 +110,10 @@ def generate_image_for_term(term: str) -> tuple[str | None, str | None, str]:
         f"Represent this Italian term visually: '{term}'. No text in image."
     )
 
-    # TEMPORARY: Skip image generation on Vercel to avoid 10-second timeout
-    # Image generation takes 15-30 seconds which exceeds Vercel's limit
-    if settings.is_vercel:
-        print("Skipping image generation on Vercel (timeout prevention)")
-        return None, None, prompt
-
     if not settings.openai_api_key:
         return None, None, prompt
 
+    # This part takes 15-30 seconds
     client = OpenAI(api_key=settings.openai_api_key)
     try:
         result = client.images.generate(
@@ -146,65 +141,76 @@ def generate_image_for_term(term: str) -> tuple[str | None, str | None, str]:
     file_path = output_dir / filename
     file_path.write_bytes(base64.b64decode(img_b64))
 
-    # Return (Remote URL, Local Path, Prompt)
     return None, str(file_path), prompt
 
 
-def create_and_send_daily_flashcard() -> dict[str, Any]:
-    print("--- Start Flashcard Generation ---")
-    
-    print("Step 1: Getting next term...")
+def create_and_send_daily_flashcard(background_image: bool = True) -> dict[str, Any]:
+    """Generates text first (fast), then optionally schedules image generation (slow)."""
+    print("--- Phase 1: Text Generation (Fast) ---")
     term = get_next_beginner_term()
-    print(f"Term selected: {term}")
-    
-    print("Step 2: Building linguistic content via OpenAI...")
     content = build_linguistic_content(term)
-    print("Linguistic content built.")
     
-    print(f"Step 3: Generating image for '{content['italian_text']}' using model '{settings.image_model}'...")
-    image_url, image_path, image_prompt = generate_image_for_term(content["italian_text"])
-    print(f"Image generated. Path: {image_path}")
-
     message = (
         "🇮🇹 Daily Italian Flashcard\n\n"
         f"🟩 Italian: {content['italian_text']}\n"
         f"🔊 Pronunciation: {content['phonetic']}\n"
-        f"🇬🇧 English: {content['english_translation']}"
+        f"🇬🇧 English: {content['english_translation']}\n\n"
+        "🎨 Generating illustration... please wait."
     )
 
-    print("Step 4: Sending to Telegram...")
-    send_telegram_message(message, image_url=image_url, image_path=image_path)
-    print("Telegram message sent.")
+    print("Sending text message to Telegram...")
+    send_telegram_message(message)
 
-    print("Step 5: Saving to database...")
+    # Database part
     with get_conn() as conn:
         cursor = conn.execute(
             """
             INSERT INTO flashcards (
-                italian_text, phonetic, english_translation, image_url, prompt_used,
-                difficulty, sent_channel, sent_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, 'beginner', 'telegram', ?, ?)
+                italian_text, phonetic, english_translation, difficulty, sent_channel, sent_at, created_at
+            ) VALUES (?, ?, ?, 'beginner', 'telegram', ?, ?)
             """,
             (
                 content["italian_text"],
                 content["phonetic"],
                 content["english_translation"],
-                image_url or image_path,
-                image_prompt,
                 _utc_now_iso(),
                 _utc_now_iso(),
             ),
         )
         flashcard_id = cursor.lastrowid
-    print(f"Database record created: ID {flashcard_id}")
-    print("--- Flashcard Generation Complete ---")
 
+    print("Phase 1 Complete.")
     return {
-        "id": flashcard_id,
-        **content,
-        "image_url": image_url,
-        "image_path": image_path,
+        "status": "text_sent",
+        "flashcard_id": flashcard_id,
+        **content
     }
+
+
+def background_image_task(term: str, flashcard_id: int):
+    """Heavy lifting for image generation. Runs outside the main request timeout."""
+    print(f"--- Phase 2: Image Generation Task for '{term}' ---")
+    try:
+        image_url, image_path, image_prompt = generate_image_for_term(term)
+        
+        if image_path:
+            print("Sending image to Telegram...")
+            send_telegram_message(
+                f"🎨 Visual for: {term}",
+                image_path=image_path
+            )
+            
+            # Update DB with image path
+            with get_conn() as conn:
+                conn.execute(
+                    "UPDATE flashcards SET image_url = ?, prompt_used = ? WHERE id = ?",
+                    (image_path, image_prompt, flashcard_id)
+                )
+            print("Phase 2 Complete.")
+        else:
+            print("Image generation failed or returned no result.")
+    except Exception as e:
+        print(f"Background image task failed: {e}")
 
 
 def list_flashcards(limit: int = 100) -> list[dict[str, Any]]:

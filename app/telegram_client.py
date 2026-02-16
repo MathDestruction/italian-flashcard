@@ -55,3 +55,5 @@ def send_telegram_message(
 
     if response.status_code >= 400:
         raise TelegramDeliveryError(f"Telegram API error: {response.status_code} {response.text}")
+    
+    return response.json()

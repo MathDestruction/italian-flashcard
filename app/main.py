@@ -1,6 +1,6 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 
 from app.config import settings
 from app.db import init_db
@@ -57,12 +57,28 @@ def health() -> dict[str, str]:
 
 @app.get("/flashcards/generate-now")
 @app.post("/flashcards/generate-now")
-def generate_now() -> dict:
-    print("Manual trigger: Generating flashcard...")
+def generate_now(background_tasks: BackgroundTasks) -> dict:
+    """Trigger a flashcard generation. Text is sent immediately, image in background."""
+    from app.flashcards import create_and_send_daily_flashcard, background_image_task
+    
+    print("Manual trigger: Starting Generation...")
     try:
+        # Phase 1: Text generation and sending (This is fast)
         result = create_and_send_daily_flashcard()
-        print(f"Success: Sent {result['italian_text']}")
-        return {"status": "success", "data": result}
+        
+        # Phase 2: Schedule image generation (This is slow, runs after request returns)
+        background_tasks.add_task(
+            background_image_task, 
+            term=result['italian_text'], 
+            flashcard_id=result['flashcard_id']
+        )
+        
+        print(f"Success: Text sent for {result['italian_text']}. Image task scheduled.")
+        return {
+            "status": "success", 
+            "message": "Flashcard text sent! Image will follow in 20-30 seconds.",
+            "data": result
+        }
     except Exception as exc:
         print(f"Error during manual trigger: {exc}")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

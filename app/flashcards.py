@@ -110,6 +110,12 @@ def generate_image_for_term(term: str) -> tuple[str | None, str | None, str]:
         f"Represent this Italian term visually: '{term}'. No text in image."
     )
 
+    # TEMPORARY: Skip image generation on Vercel to avoid 10-second timeout
+    # Image generation takes 15-30 seconds which exceeds Vercel's limit
+    if settings.is_vercel:
+        print("Skipping image generation on Vercel (timeout prevention)")
+        return None, None, prompt
+
     if not settings.openai_api_key:
         return None, None, prompt
 

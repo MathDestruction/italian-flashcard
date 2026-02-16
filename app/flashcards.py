@@ -145,9 +145,19 @@ def generate_image_for_term(term: str) -> tuple[str | None, str | None, str]:
 
 
 def create_and_send_daily_flashcard() -> dict[str, Any]:
+    print("--- Start Flashcard Generation ---")
+    
+    print("Step 1: Getting next term...")
     term = get_next_beginner_term()
+    print(f"Term selected: {term}")
+    
+    print("Step 2: Building linguistic content via OpenAI...")
     content = build_linguistic_content(term)
+    print("Linguistic content built.")
+    
+    print(f"Step 3: Generating image for '{content['italian_text']}' using model '{settings.image_model}'...")
     image_url, image_path, image_prompt = generate_image_for_term(content["italian_text"])
+    print(f"Image generated. Path: {image_path}")
 
     message = (
         "🇮🇹 Daily Italian Flashcard\n\n"
@@ -156,8 +166,11 @@ def create_and_send_daily_flashcard() -> dict[str, Any]:
         f"🇬🇧 English: {content['english_translation']}"
     )
 
+    print("Step 4: Sending to Telegram...")
     send_telegram_message(message, image_url=image_url, image_path=image_path)
+    print("Telegram message sent.")
 
+    print("Step 5: Saving to database...")
     with get_conn() as conn:
         cursor = conn.execute(
             """
@@ -170,13 +183,15 @@ def create_and_send_daily_flashcard() -> dict[str, Any]:
                 content["italian_text"],
                 content["phonetic"],
                 content["english_translation"],
-                image_url or image_path, # Store path if URL is missing
+                image_url or image_path,
                 image_prompt,
                 _utc_now_iso(),
                 _utc_now_iso(),
             ),
         )
         flashcard_id = cursor.lastrowid
+    print(f"Database record created: ID {flashcard_id}")
+    print("--- Flashcard Generation Complete ---")
 
     return {
         "id": flashcard_id,

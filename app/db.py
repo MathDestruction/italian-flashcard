@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS flashcards (
 
 
 def init_db() -> None:
-    Path(settings.db_path).touch(exist_ok=True)
+    db_path = Path(settings.db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db_path.touch(exist_ok=True)
     with sqlite3.connect(settings.db_path) as conn:
         conn.executescript(SCHEMA_SQL)
         conn.commit()

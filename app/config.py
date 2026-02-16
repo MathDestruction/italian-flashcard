@@ -11,7 +11,7 @@ class Settings:
     # On Vercel, we must write to /tmp
     is_vercel: bool = os.getenv("VERCEL") == "1"
     
-    db_path: str = os.getenv("DB_PATH", "/tmp/flashcards.db" if os.getenv("VERCEL") == "1" else "flashcards.db")
+    db_path: str = os.getenv("DB_PATH", "/tmp/data/flashcards.db" if os.getenv("VERCEL") == "1" else "flashcards.db")
     timezone: str = os.getenv("TIMEZONE", "Africa/Johannesburg")
     schedule_hour: int = int(os.getenv("SCHEDULE_HOUR", "8"))
     schedule_minute: int = int(os.getenv("SCHEDULE_MINUTE", "0"))

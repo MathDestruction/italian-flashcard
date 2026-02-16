@@ -104,25 +104,27 @@ def build_linguistic_content(term: str) -> dict[str, str]:
     }
 
 
-def generate_image_for_term(term: str) -> tuple[str | None, str]:
+def generate_image_for_term(term: str) -> tuple[str | None, str | None, str]:
     prompt = (
         "Create a clean, friendly educational illustration suitable for a language flashcard. "
         f"Represent this Italian term visually: '{term}'. No text in image."
     )
 
     if not settings.openai_api_key:
-        return None, prompt
+        return None, None, prompt
 
     client = OpenAI(api_key=settings.openai_api_key)
+    # Defaulting to dall-e-3 for better results as discussed
     result = client.images.generate(
         model=settings.image_model,
         prompt=prompt,
         size=settings.image_size,
+        response_format="b64_json"
     )
 
     img_b64 = result.data[0].b64_json if result.data else None
     if not img_b64:
-        return None, prompt
+        return None, None, prompt
 
     output_dir = Path("generated_images")
     output_dir.mkdir(exist_ok=True)
@@ -130,14 +132,15 @@ def generate_image_for_term(term: str) -> tuple[str | None, str]:
     file_path = output_dir / filename
     file_path.write_bytes(base64.b64decode(img_b64))
 
-    # Telegram can only send remote URLs directly with sendPhoto; local file upload could be added later.
-    return None, prompt
+    # Return (Remote URL, Local Path, Prompt)
+    # dall-e-3 in b64 mode doesn't return a URL, we return the local path for upload
+    return None, str(file_path), prompt
 
 
 def create_and_send_daily_flashcard() -> dict[str, Any]:
     term = get_next_beginner_term()
     content = build_linguistic_content(term)
-    image_url, image_prompt = generate_image_for_term(content["italian_text"])
+    image_url, image_path, image_prompt = generate_image_for_term(content["italian_text"])
 
     message = (
         "🇮🇹 Daily Italian Flashcard\n\n"
@@ -146,7 +149,7 @@ def create_and_send_daily_flashcard() -> dict[str, Any]:
         f"🇬🇧 English: {content['english_translation']}"
     )
 
-    send_telegram_message(message, image_url=image_url)
+    send_telegram_message(message, image_url=image_url, image_path=image_path)
 
     with get_conn() as conn:
         cursor = conn.execute(
@@ -160,7 +163,7 @@ def create_and_send_daily_flashcard() -> dict[str, Any]:
                 content["italian_text"],
                 content["phonetic"],
                 content["english_translation"],
-                image_url,
+                image_url or image_path, # Store path if URL is missing
                 image_prompt,
                 _utc_now_iso(),
                 _utc_now_iso(),
@@ -172,6 +175,7 @@ def create_and_send_daily_flashcard() -> dict[str, Any]:
         "id": flashcard_id,
         **content,
         "image_url": image_url,
+        "image_path": image_path,
     }
 
 

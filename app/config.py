@@ -15,7 +15,8 @@ class Settings:
     beginner_terms_file: str = os.getenv("BEGINNER_TERMS_FILE", "data/beginner_terms.json")
 
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
-    image_model: str = os.getenv("IMAGE_MODEL", "gpt-image-1")
+    google_api_key: str | None = os.getenv("GOOGLE_API_KEY") # For Nano Banana
+    image_model: str = os.getenv("IMAGE_MODEL", "gpt-image-2") # Updated to user specified GPT Image 2
     image_size: str = os.getenv("IMAGE_SIZE", "1024x1024")
 
     telegram_bot_token: str | None = os.getenv("TELEGRAM_BOT_TOKEN")

@@ -47,6 +47,36 @@ def test_telegram() -> dict:
         return {"status": "❌ FAILED", "error": str(e), "traceback": traceback.format_exc()}
 
 
+def test_image_generation() -> dict:
+    """Test OpenAI image generation with configured model."""
+    try:
+        if not settings.openai_api_key:
+            return {"status": "⚠️ SKIPPED", "reason": "No API key configured"}
+        
+        client = OpenAI(api_key=settings.openai_api_key, timeout=30.0)
+        print(f"Testing image model: {settings.image_model}")
+        
+        # Small test prompt
+        response = client.images.generate(
+            model=settings.image_model,
+            prompt="A small red apple on a white background, minimalist flat 2D style.",
+            size=settings.image_size,
+            n=1
+        )
+        return {
+            "status": "✅ SUCCESS",
+            "model_used": settings.image_model,
+            "image_url": response.data[0].url if response.data else "No URL"
+        }
+    except Exception as e:
+        return {
+            "status": "❌ FAILED",
+            "model_tried": settings.image_model,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 def run_all_diagnostics() -> dict:
     """Run all diagnostic tests."""
     return {
@@ -54,6 +84,7 @@ def run_all_diagnostics() -> dict:
             "is_vercel": settings.is_vercel,
             "db_path": settings.db_path,
             "has_openai_key": bool(settings.openai_api_key),
+            "image_model": settings.image_model,
             "has_telegram_token": bool(settings.telegram_bot_token),
             "has_telegram_chat_id": bool(settings.telegram_chat_id),
         },
@@ -61,5 +92,6 @@ def run_all_diagnostics() -> dict:
             "1_database": test_database(),
             "2_openai_text": test_openai_text(),
             "3_telegram": test_telegram(),
+            "4_image_gen": test_image_generation(),
         }
     }

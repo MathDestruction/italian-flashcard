@@ -20,8 +20,9 @@ class Settings:
     # We take splitlines()[0] to handle accidental multi-line pastes in Vercel
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY").splitlines()[0].strip() if os.getenv("OPENAI_API_KEY") else None
     google_api_key: str | None = os.getenv("GOOGLE_API_KEY").splitlines()[0].strip() if os.getenv("GOOGLE_API_KEY") else None
-    image_model: str = os.getenv("IMAGE_MODEL", "gpt-image-2").splitlines()[0].strip()
+    image_model: str = os.getenv("IMAGE_MODEL", "gpt-image-1").splitlines()[0].strip()
     image_size: str = os.getenv("IMAGE_SIZE", "1024x1024").splitlines()[0].strip()
+    image_prompt_file: str = os.getenv("IMAGE_PROMPT_FILE", "imagePrompt.txt")
 
     telegram_bot_token: str | None = os.getenv("TELEGRAM_BOT_TOKEN").splitlines()[0].strip() if os.getenv("TELEGRAM_BOT_TOKEN") else None
     telegram_chat_id: str | None = os.getenv("TELEGRAM_CHAT_ID").splitlines()[0].strip() if os.getenv("TELEGRAM_CHAT_ID") else None

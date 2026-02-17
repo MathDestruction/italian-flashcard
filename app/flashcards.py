@@ -109,48 +109,92 @@ def build_linguistic_content(term: str) -> dict[str, str]:
     }
 
 
-def generate_image_for_term(term: str) -> tuple[str | None, str | None, str]:
+def generate_image_for_term(term: str, phonetic: str = "", translation: str = "") -> tuple[str | None, str | None, str, str]:
+    """Generate image using guided prompt from imagePrompt.txt combined with term details.
+    Returns: (image_url, image_path, prompt_used, model_used)
+    """
+    
+    # Read base prompt from file
+    prompt_path = Path(settings.image_prompt_file)
+    if prompt_path.exists():
+        base_prompt = prompt_path.read_text(encoding="utf-8").strip()
+    else:
+        # Fallback prompt if file doesn't exist
+        base_prompt = (
+            "Create a clean, friendly educational illustration suitable for a language flashcard. "
+            "No text in image."
+        )
+    
+    # Combine base prompt with specific term details in a highly structured way
     prompt = (
-        "Create a clean, friendly educational illustration suitable for a language flashcard. "
-        f"Represent this Italian term visually: '{term}'. No text in image."
+        f"### DESIGN SYSTEM & LAYOUT INSTRUCTIONS:\n{base_prompt}\n\n"
+        f"### TEXT CONTENT TO RENDER IN THE GRAPHIC (CRITICAL):\n"
+        f"- Italian Phrase: {term}\n"
+        f"- English Translation: {translation}\n"
+        f"- Pronunciation: {phonetic}\n\n"
+        f"### FINAL CHECK:\n"
+        f"- The background must be SOLID WHITE.\n"
+        f"- Ensure the illustration is simple, flat, 2D, and represents '{term}'.\n"
+        f"- Render all text elements clearly as specified in the layout instructions."
     )
 
     if not settings.openai_api_key:
-        return None, None, prompt
+        return None, None, prompt, "none"
 
-    # This part takes 15-30 seconds
+    # This newer model can take up to 2 minutes for complex prompts
     client = OpenAI(
         api_key=settings.openai_api_key,
-        timeout=30.0,
+        timeout=120.0,
         max_retries=0
     )
+    
+    model_used = settings.image_model
     try:
+        print(f"Attempting image generation with model: {model_used}")
+        # Newer models might not support response_format="b64_json"
         result = client.images.generate(
-            model=settings.image_model,
+            model=model_used,
             prompt=prompt,
-            size=settings.image_size,
-            response_format="b64_json"
+            size=settings.image_size
         )
     except Exception as e:
-        print(f"Error with model {settings.image_model}: {e}. Falling back to dall-e-3.")
+        error_msg = f"Error with model {model_used}: {e}. Falling back to dall-e-3."
+        print(error_msg)
+        try:
+            from app.telegram_client import send_telegram_message
+            send_telegram_message(f"⚠️ Image generation fallback:\n`{error_msg}`")
+        except:
+            pass
+            
+        model_used = "dall-e-3"
         result = client.images.generate(
-            model="dall-e-3",
+            model=model_used,
             prompt=prompt,
             size=settings.image_size,
             response_format="b64_json"
         )
 
-    img_b64 = result.data[0].b64_json if result.data else None
-    if not img_b64:
-        return None, None, prompt
+    # Handle either b64_json or url response
+    img_data = None
+    if result.data:
+        if hasattr(result.data[0], 'b64_json') and result.data[0].b64_json:
+            img_data = base64.b64decode(result.data[0].b64_json)
+        elif hasattr(result.data[0], 'url') and result.data[0].url:
+            import requests
+            img_response = requests.get(result.data[0].url, timeout=30)
+            if img_response.status_code == 200:
+                img_data = img_response.content
+
+    if not img_data:
+        return None, None, prompt, model_used
 
     output_dir = Path(settings.images_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
     filename = f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{_slugify(term)}.png"
     file_path = output_dir / filename
-    file_path.write_bytes(base64.b64decode(img_b64))
+    file_path.write_bytes(img_data)
 
-    return None, str(file_path), prompt
+    return None, str(file_path), prompt, model_used
 
 
 def create_and_send_daily_flashcard(background_image: bool = True) -> dict[str, Any]:
@@ -196,24 +240,26 @@ def create_and_send_daily_flashcard(background_image: bool = True) -> dict[str, 
     }
 
 
-def background_image_task(term: str, flashcard_id: int):
+def background_image_task(term: str, flashcard_id: int, phonetic: str = "", translation: str = ""):
     """Heavy lifting for image generation. Runs outside the main request timeout."""
     print(f"--- Phase 2: Image Generation Task for '{term}' ---")
     try:
-        image_url, image_path, image_prompt = generate_image_for_term(term)
+        image_url, image_path, image_prompt, model_used = generate_image_for_term(term, phonetic, translation)
         
         if image_path:
-            print("Sending image to Telegram...")
+            # Show the ACTUAL model used in the caption
+            model_info = f" (via {model_used})"
+            print(f"Sending image to Telegram. Actual model used: {model_used}")
             send_telegram_message(
-                f"🎨 Visual for: {term}",
+                f"🎨 Visual for: {term}{model_info}",
                 image_path=image_path
             )
             
-            # Update DB with image path
+            # Update DB with image path and actual model used
             with get_conn() as conn:
                 conn.execute(
                     "UPDATE flashcards SET image_url = ?, prompt_used = ? WHERE id = ?",
-                    (image_path, image_prompt, flashcard_id)
+                    (image_path, f"[{model_used}] {image_prompt}", flashcard_id)
                 )
             print("Phase 2 Complete.")
         else:

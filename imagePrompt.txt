@@ -1,0 +1,14 @@
+Create a clean beginner-friendly Italian learning flashcard graphic in modern flat 2D. Solid white background. No physical card, no border, no rounded rectangle, no drop shadow, no scene/desk. Only the composed graphic.
+
+Centered stacked layout:
+Italian phrase at top — very large, bold, highest priority.
+
+English translation directly below — smaller, regular weight.
+
+Pronunciation line below — clearly labeled “Pronunciation:” with easy-to-read phonetics.
+
+Add a simple friendly flat cartoon illustration that clearly represents the phrase, balanced with the text (supports it, doesn’t overpower).
+
+Style: minimal, colorful educational design, clean modern sans-serif typography, high contrast, generous spacing, well-organized, no clutter, playful-but-professional classroom vibe.
+
+Strict: no extra text, no logos, no watermarks, no background shapes/patterns/gradients.

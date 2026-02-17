@@ -76,13 +76,15 @@ def build_linguistic_content(term: str) -> dict[str, str]:
     if not settings.openai_api_key:
         return {
             "italian_text": term,
-            "phonetic": "Pronunciation unavailable (set OPENAI_API_KEY).",
-            "english_translation": "Translation unavailable (set OPENAI_API_KEY).",
+            "phonetic": "Pronunciation unavailable.",
+            "english_translation": "Translation unavailable.",
+            "example_sentence": "Example sentence unavailable."
         }
 
     prompt = (
         "You are helping beginners learn Italian. "
-        "Return strict JSON with keys italian_text, phonetic, english_translation. "
+        "Return strict JSON with keys: italian_text, phonetic, english_translation, example_sentence. "
+        "The example_sentence should be a simple beginner-friendly sentence using the term. "
         f"Use this Italian word/phrase: {term}."
     )
     # Create client with specific timeout and NO retries to avoid Vercel timeout loop
@@ -106,6 +108,7 @@ def build_linguistic_content(term: str) -> dict[str, str]:
         "italian_text": parsed.get("italian_text", term),
         "phonetic": parsed.get("phonetic", "N/A"),
         "english_translation": parsed.get("english_translation", "N/A"),
+        "example_sentence": parsed.get("example_sentence", "N/A"),
     }
 
 
@@ -198,34 +201,28 @@ def generate_image_for_term(term: str, phonetic: str = "", translation: str = ""
 
 
 def create_and_send_daily_flashcard(background_image: bool = True) -> dict[str, Any]:
-    """Generates text first (fast), then optionally schedules image generation (slow)."""
+    """Generates linguistic content and saves to DB. Image sending is handled by background task."""
     print("--- Phase 1: Text Generation (Fast) ---")
     term = get_next_beginner_term()
     content = build_linguistic_content(term)
     
-    message = (
-        "🇮🇹 Daily Italian Flashcard\n\n"
-        f"🟩 Italian: {content['italian_text']}\n"
-        f"🔊 Pronunciation: {content['phonetic']}\n"
-        f"🇬🇧 English: {content['english_translation']}\n\n"
-        "🎨 Generating illustration... please wait."
-    )
-
-    print("Sending text message to Telegram...")
-    send_telegram_message(message)
+    # We no longer send a message here to avoid "double messages"
+    # The message will be sent with the image in Phase 2.
+    print(f"Linguistic content for '{term}' prepared.")
 
     # Database part
     with get_conn() as conn:
         cursor = conn.execute(
             """
             INSERT INTO flashcards (
-                italian_text, phonetic, english_translation, difficulty, sent_channel, sent_at, created_at
-            ) VALUES (?, ?, ?, 'beginner', 'telegram', ?, ?)
+                italian_text, phonetic, english_translation, example_sentence, difficulty, sent_channel, sent_at, created_at
+            ) VALUES (?, ?, ?, ?, 'beginner', 'telegram', ?, ?)
             """,
             (
                 content["italian_text"],
                 content["phonetic"],
                 content["english_translation"],
+                content["example_sentence"],
                 _utc_now_iso(),
                 _utc_now_iso(),
             ),
@@ -234,24 +231,32 @@ def create_and_send_daily_flashcard(background_image: bool = True) -> dict[str, 
 
     print("Phase 1 Complete.")
     return {
-        "status": "text_sent",
+        "status": "data_prepared",
         "flashcard_id": flashcard_id,
+        "example_sentence": content["example_sentence"],
         **content
     }
 
 
-def background_image_task(term: str, flashcard_id: int, phonetic: str = "", translation: str = ""):
-    """Heavy lifting for image generation. Runs outside the main request timeout."""
+def background_image_task(term: str, flashcard_id: int, phonetic: str = "", translation: str = "", example_sentence: str = ""):
+    """Heavy lifting for image generation. Sends ONE consolidated message with the image + text."""
     print(f"--- Phase 2: Image Generation Task for '{term}' ---")
     try:
         image_url, image_path, image_prompt, model_used = generate_image_for_term(term, phonetic, translation)
         
+        # Build the consolidated caption
+        caption = (
+            f"🇮🇹 Daily Italian Flashcard\n\n"
+            f"🟩 Italian: {term}\n"
+            f"🔊 Pronunciation: {phonetic}\n"
+            f"🇬🇧 English: {translation}\n\n"
+            f"📝 Example:\n_{example_sentence}_"
+        )
+
         if image_path:
-            # Show the ACTUAL model used in the caption
-            model_info = f" (via {model_used})"
-            print(f"Sending image to Telegram. Actual model used: {model_used}")
+            print(f"Sending consolidated message to Telegram (Model: {model_used})")
             send_telegram_message(
-                f"🎨 Visual for: {term}{model_info}",
+                caption,
                 image_path=image_path
             )
             
@@ -263,9 +268,16 @@ def background_image_task(term: str, flashcard_id: int, phonetic: str = "", tran
                 )
             print("Phase 2 Complete.")
         else:
-            print("Image generation failed or returned no result.")
+            print("Image generation failed. Sending text-only fallback.")
+            send_telegram_message(caption)
     except Exception as e:
         print(f"Background image task failed: {e}")
+        # Last resort fallback to try to send SOMETHING
+        try:
+            fallback_text = f"🇮🇹 Daily Italian Flashcard\n\nItalian: {term}\nEnglish: {translation}"
+            send_telegram_message(fallback_text)
+        except:
+            pass
 
 
 def list_flashcards(limit: int = 100) -> list[dict[str, Any]]:

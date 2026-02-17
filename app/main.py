@@ -72,7 +72,8 @@ def generate_now(background_tasks: BackgroundTasks) -> dict:
             term=result['italian_text'], 
             flashcard_id=result['flashcard_id'],
             phonetic=result.get('phonetic', ''),
-            translation=result.get('english_translation', '')
+            translation=result.get('english_translation', ''),
+            example_sentence=result.get('example_sentence', '')
         )
         
         print(f"Success: Text sent for {result['italian_text']}. Image task scheduled.")

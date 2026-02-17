@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS flashcards (
   italian_text TEXT NOT NULL,
   phonetic TEXT NOT NULL,
   english_translation TEXT NOT NULL,
+  example_sentence TEXT,
   image_url TEXT,
   prompt_used TEXT,
   difficulty TEXT NOT NULL DEFAULT 'beginner',

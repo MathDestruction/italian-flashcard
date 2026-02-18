@@ -16,16 +16,21 @@ def seed_beginner_terms_if_empty() -> None:
     if not terms_path.exists():
         return
 
-    supabase = get_supabase()
-    # Check if any source_terms exist
+    if not settings.supabase_url or not settings.supabase_key:
+        print("⚠️ Supabase credentials not found. Skipping seeding.")
+        return
+
     try:
+        supabase = get_supabase()
+        # Check if any source_terms exist
         response = supabase.table("source_terms").select("id", count="exact").limit(1).execute()
         if response.count is not None and response.count > 0:
             return
     except Exception as e:
-        print(f"Error checking source_terms: {e}")
-        # Possibly table doesn't exist yet
-        return
+        print(f"⚠️ Supabase check failed (maybe table doesn't exist yet?): {e}")
+        # If it's a real connection error, we stop here
+        if "apikey" in str(e).lower() or "url" in str(e).lower():
+             return
 
     terms = json.loads(terms_path.read_text(encoding="utf-8"))
     data_to_insert = [

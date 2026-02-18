@@ -12,8 +12,12 @@ scheduler = BackgroundScheduler(timezone=settings.timezone)
 
 @app.on_event("startup")
 def startup() -> None:
-    init_db()
-    seed_beginner_terms_if_empty()
+    try:
+        init_db()
+        seed_beginner_terms_if_empty()
+    except Exception as e:
+        print(f"❌ Critical error during startup: {e}")
+        # We don't re-raise, so the app stays alive for diagnostics
 
     scheduler.add_job(
         create_and_send_daily_flashcard,
@@ -44,6 +48,7 @@ def read_root():
             "is_vercel": settings.is_vercel,
             "db_path": settings.db_path,
             "has_openai": bool(settings.openai_api_key),
+            "has_supabase": bool(settings.supabase_url and settings.supabase_key),
             "has_telegram_token": bool(settings.telegram_bot_token),
             "chat_id": settings.telegram_chat_id[:5] + "..." if settings.telegram_chat_id else None
         }

@@ -27,8 +27,9 @@ class Settings:
     telegram_bot_token: str | None = os.getenv("TELEGRAM_BOT_TOKEN").splitlines()[0].strip() if os.getenv("TELEGRAM_BOT_TOKEN") else None
     telegram_chat_id: str | None = os.getenv("TELEGRAM_CHAT_ID").splitlines()[0].strip() if os.getenv("TELEGRAM_CHAT_ID") else None
 
-    supabase_url: str | None = os.getenv("SUPABASE_URL")
-    supabase_key: str | None = os.getenv("SUPABASE_KEY")
+    # Aggressive stripping for URLs and Keys to handle common copy-paste errors
+    supabase_url: str | None = os.getenv("SUPABASE_URL").splitlines()[0].strip().strip('"').strip("'") if os.getenv("SUPABASE_URL") else None
+    supabase_key: str | None = os.getenv("SUPABASE_KEY").splitlines()[0].strip().strip('"').strip("'") if os.getenv("SUPABASE_KEY") else None
 
     @property
     def images_dir(self) -> str:

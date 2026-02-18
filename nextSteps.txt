@@ -1,5 +1,2 @@
-- image gen is STILL using Dalle 3, rather than the newer model (GPT-Image-1)
-- Images need a guiding prompt, use @imagePrompt.txt to guide the image generation. This prompt should be used along with the Italian word/phrase that should be added to the flash card.
-- Words/phrases are repeated which makes me think that previously used workds/phrases arent being stored locally to ensure there are no repeats
-- This automation did NOT run this morning at 8am. The automatin needs to be able to run without me opening the site or any page in order to trigger automation
+- Word/phrase repetition - Need Supabase integration
 

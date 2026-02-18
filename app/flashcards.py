@@ -7,7 +7,7 @@ from typing import Any
 from openai import OpenAI
 
 from app.config import settings
-from app.db import get_conn
+from app.db import get_supabase
 from app.telegram_client import send_telegram_message
 
 
@@ -16,60 +16,80 @@ def seed_beginner_terms_if_empty() -> None:
     if not terms_path.exists():
         return
 
-    with get_conn() as conn:
-        existing_count = conn.execute("SELECT COUNT(*) AS count FROM source_terms").fetchone()["count"]
-        if existing_count > 0:
+    supabase = get_supabase()
+    # Check if any source_terms exist
+    try:
+        response = supabase.table("source_terms").select("id", count="exact").limit(1).execute()
+        if response.count is not None and response.count > 0:
             return
+    except Exception as e:
+        print(f"Error checking source_terms: {e}")
+        # Possibly table doesn't exist yet
+        return
 
-        terms = json.loads(terms_path.read_text(encoding="utf-8"))
-        for term in terms:
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO source_terms (italian_text, category, difficulty)
-                VALUES (?, ?, ?)
-                """,
-                (term["italian_text"], term.get("category", "general"), "beginner"),
-            )
+    terms = json.loads(terms_path.read_text(encoding="utf-8"))
+    data_to_insert = [
+        {
+            "italian_text": term["italian_text"],
+            "category": term.get("category", "general"),
+            "difficulty": "beginner",
+            "used": False
+        }
+        for term in terms
+    ]
+    if data_to_insert:
+        try:
+            supabase.table("source_terms").insert(data_to_insert).execute()
+            print(f"Seeded {len(data_to_insert)} terms to Supabase.")
+        except Exception as e:
+            print(f"Error seeding terms: {e}")
 
 
 def get_next_beginner_term() -> str:
-    with get_conn() as conn:
-        row = conn.execute(
-            """
-            SELECT id, italian_text
-            FROM source_terms
-            WHERE difficulty = 'beginner' AND used = 0
-            ORDER BY id ASC
-            LIMIT 1
-            """
-        ).fetchone()
+    supabase = get_supabase()
+    
+    # Find one unused term
+    response = supabase.table("source_terms") \
+        .select("id, italian_text") \
+        .eq("difficulty", "beginner") \
+        .eq("used", False) \
+        .order("id") \
+        .limit(1) \
+        .execute()
+    
+    row = response.data[0] if response.data else None
 
-        if row:
-            conn.execute(
-                "UPDATE source_terms SET used = 1, used_at = ? WHERE id = ?",
-                (_utc_now_iso(), row["id"]),
-            )
-            return row["italian_text"]
+    if row:
+        supabase.table("source_terms") \
+            .update({"used": True, "used_at": _utc_now_iso()}) \
+            .eq("id", row["id"]) \
+            .execute()
+        return row["italian_text"]
 
-        conn.execute("UPDATE source_terms SET used = 0, used_at = NULL WHERE difficulty = 'beginner'")
-        recycled = conn.execute(
-            """
-            SELECT id, italian_text
-            FROM source_terms
-            WHERE difficulty = 'beginner'
-            ORDER BY id ASC
-            LIMIT 1
-            """
-        ).fetchone()
+    # Recycle if none left
+    print("No unused beginner terms left. Recycling...")
+    supabase.table("source_terms") \
+        .update({"used": False, "used_at": None}) \
+        .eq("difficulty", "beginner") \
+        .execute()
+        
+    response = supabase.table("source_terms") \
+        .select("id, italian_text") \
+        .eq("difficulty", "beginner") \
+        .order("id") \
+        .limit(1) \
+        .execute()
+    
+    recycled = response.data[0] if response.data else None
 
-        if not recycled:
-            raise ValueError("No beginner terms found. Populate data/beginner_terms.json.")
+    if not recycled:
+        raise ValueError("No beginner terms found in source_terms table.")
 
-        conn.execute(
-            "UPDATE source_terms SET used = 1, used_at = ? WHERE id = ?",
-            (_utc_now_iso(), recycled["id"]),
-        )
-        return recycled["italian_text"]
+    supabase.table("source_terms") \
+        .update({"used": True, "used_at": _utc_now_iso()}) \
+        .eq("id", recycled["id"]) \
+        .execute()
+    return recycled["italian_text"]
 
 
 def build_linguistic_content(term: str) -> dict[str, str]:
@@ -87,7 +107,6 @@ def build_linguistic_content(term: str) -> dict[str, str]:
         "The example_sentence should be a simple beginner-friendly sentence using the term. "
         f"Use this Italian word/phrase: {term}."
     )
-    # Create client with specific timeout and NO retries to avoid Vercel timeout loop
     client = OpenAI(
         api_key=settings.openai_api_key,
         timeout=8.0,
@@ -113,22 +132,16 @@ def build_linguistic_content(term: str) -> dict[str, str]:
 
 
 def generate_image_for_term(term: str, phonetic: str = "", translation: str = "") -> tuple[str | None, str | None, str, str]:
-    """Generate image using guided prompt from imagePrompt.txt combined with term details.
-    Returns: (image_url, image_path, prompt_used, model_used)
-    """
-    
-    # Read base prompt from file
+    """Generate image using guided prompt from imagePrompt.txt combined with term details."""
     prompt_path = Path(settings.image_prompt_file)
     if prompt_path.exists():
         base_prompt = prompt_path.read_text(encoding="utf-8").strip()
     else:
-        # Fallback prompt if file doesn't exist
         base_prompt = (
             "Create a clean, friendly educational illustration suitable for a language flashcard. "
             "No text in image."
         )
     
-    # Combine base prompt with specific term details in a highly structured way
     prompt = (
         f"### DESIGN SYSTEM & LAYOUT INSTRUCTIONS:\n{base_prompt}\n\n"
         f"### TEXT CONTENT TO RENDER IN THE GRAPHIC (CRITICAL):\n"
@@ -144,7 +157,6 @@ def generate_image_for_term(term: str, phonetic: str = "", translation: str = ""
     if not settings.openai_api_key:
         return None, None, prompt, "none"
 
-    # This newer model can take up to 2 minutes for complex prompts
     client = OpenAI(
         api_key=settings.openai_api_key,
         timeout=120.0,
@@ -154,7 +166,6 @@ def generate_image_for_term(term: str, phonetic: str = "", translation: str = ""
     model_used = settings.image_model
     try:
         print(f"Attempting image generation with model: {model_used}")
-        # Newer models might not support response_format="b64_json"
         result = client.images.generate(
             model=model_used,
             prompt=prompt,
@@ -164,7 +175,6 @@ def generate_image_for_term(term: str, phonetic: str = "", translation: str = ""
         error_msg = f"Error with model {model_used}: {e}. Falling back to dall-e-3."
         print(error_msg)
         try:
-            from app.telegram_client import send_telegram_message
             send_telegram_message(f"⚠️ Image generation fallback:\n`{error_msg}`")
         except:
             pass
@@ -177,7 +187,6 @@ def generate_image_for_term(term: str, phonetic: str = "", translation: str = ""
             response_format="b64_json"
         )
 
-    # Handle either b64_json or url response
     img_data = None
     if result.data:
         if hasattr(result.data[0], 'b64_json') and result.data[0].b64_json:
@@ -200,41 +209,37 @@ def generate_image_for_term(term: str, phonetic: str = "", translation: str = ""
     return None, str(file_path), prompt, model_used
 
 
-def create_and_send_daily_flashcard(background_image: bool = True) -> dict[str, Any]:
-    """Generates linguistic content and saves to DB. Image sending is handled by background task."""
+def create_and_send_daily_flashcard() -> dict[str, Any]:
+    """Generates linguistic content and saves to DB."""
     print("--- Phase 1: Text Generation (Fast) ---")
     term = get_next_beginner_term()
     content = build_linguistic_content(term)
     
-    # We no longer send a message here to avoid "double messages"
-    # The message will be sent with the image in Phase 2.
     print(f"Linguistic content for '{term}' prepared.")
 
-    # Database part
-    with get_conn() as conn:
-        cursor = conn.execute(
-            """
-            INSERT INTO flashcards (
-                italian_text, phonetic, english_translation, example_sentence, difficulty, sent_channel, sent_at, created_at
-            ) VALUES (?, ?, ?, ?, 'beginner', 'telegram', ?, ?)
-            """,
-            (
-                content["italian_text"],
-                content["phonetic"],
-                content["english_translation"],
-                content["example_sentence"],
-                _utc_now_iso(),
-                _utc_now_iso(),
-            ),
-        )
-        flashcard_id = cursor.lastrowid
+    # Supabase insert
+    supabase = get_supabase()
+    response = supabase.table("flashcards").insert({
+        "italian_text": content["italian_text"],
+        "phonetic": content["phonetic"],
+        "english_translation": content["english_translation"],
+        "example_sentence": content["example_sentence"],
+        "difficulty": "beginner",
+        "sent_channel": "telegram",
+        "sent_at": _utc_now_iso(),
+        "created_at": _utc_now_iso(),
+    }).execute()
+    
+    flashcard_id = response.data[0]["id"] if response.data else 0
 
     print("Phase 1 Complete.")
     return {
         "status": "data_prepared",
         "flashcard_id": flashcard_id,
-        "example_sentence": content["example_sentence"],
-        **content
+        "italian_text": content["italian_text"],
+        "phonetic": content["phonetic"],
+        "english_translation": content["english_translation"],
+        "example_sentence": content["example_sentence"]
     }
 
 
@@ -244,7 +249,6 @@ def background_image_task(term: str, flashcard_id: int, phonetic: str = "", tran
     try:
         image_url, image_path, image_prompt, model_used = generate_image_for_term(term, phonetic, translation)
         
-        # Build the consolidated caption
         caption = (
             f"🇮🇹 Daily Italian Flashcard\n\n"
             f"🟩 Italian: {term}\n"
@@ -260,19 +264,18 @@ def background_image_task(term: str, flashcard_id: int, phonetic: str = "", tran
                 image_path=image_path
             )
             
-            # Update DB with image path and actual model used
-            with get_conn() as conn:
-                conn.execute(
-                    "UPDATE flashcards SET image_url = ?, prompt_used = ? WHERE id = ?",
-                    (image_path, f"[{model_used}] {image_prompt}", flashcard_id)
-                )
+            # Update Supabase
+            supabase = get_supabase()
+            supabase.table("flashcards") \
+                .update({"image_url": image_path, "prompt_used": f"[{model_used}] {image_prompt}"}) \
+                .eq("id", flashcard_id) \
+                .execute()
             print("Phase 2 Complete.")
         else:
             print("Image generation failed. Sending text-only fallback.")
             send_telegram_message(caption)
     except Exception as e:
         print(f"Background image task failed: {e}")
-        # Last resort fallback to try to send SOMETHING
         try:
             fallback_text = f"🇮🇹 Daily Italian Flashcard\n\nItalian: {term}\nEnglish: {translation}"
             send_telegram_message(fallback_text)
@@ -281,19 +284,13 @@ def background_image_task(term: str, flashcard_id: int, phonetic: str = "", tran
 
 
 def list_flashcards(limit: int = 100) -> list[dict[str, Any]]:
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, italian_text, phonetic, english_translation, image_url,
-                   difficulty, sent_channel, sent_at, created_at
-            FROM flashcards
-            ORDER BY created_at DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-
-    return [dict(row) for row in rows]
+    supabase = get_supabase()
+    response = supabase.table("flashcards") \
+        .select("*") \
+        .order("created_at", descending=True) \
+        .limit(limit) \
+        .execute()
+    return response.data if response.data else []
 
 
 def _utc_now_iso() -> str:

@@ -27,6 +27,9 @@ class Settings:
     telegram_bot_token: str | None = os.getenv("TELEGRAM_BOT_TOKEN").splitlines()[0].strip() if os.getenv("TELEGRAM_BOT_TOKEN") else None
     telegram_chat_id: str | None = os.getenv("TELEGRAM_CHAT_ID").splitlines()[0].strip() if os.getenv("TELEGRAM_CHAT_ID") else None
 
+    supabase_url: str | None = os.getenv("SUPABASE_URL")
+    supabase_key: str | None = os.getenv("SUPABASE_KEY")
+
     @property
     def images_dir(self) -> str:
         return "/tmp/generated_images" if self.is_vercel else "generated_images"

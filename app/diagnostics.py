@@ -2,17 +2,20 @@
 import traceback
 from openai import OpenAI
 from app.config import settings
-from app.db import get_conn, init_db
+from app.db import get_supabase
 from app.telegram_client import send_telegram_message
 
 
 def test_database() -> dict:
-    """Test database connection and initialization."""
+    """Test Supabase connection and connectivity."""
     try:
-        init_db()
-        with get_conn() as conn:
-            count = conn.execute("SELECT COUNT(*) as count FROM source_terms").fetchone()["count"]
-        return {"status": "✅ SUCCESS", "terms_count": count}
+        if not settings.supabase_url or not settings.supabase_key:
+            return {"status": "⚠️ SKIPPED", "reason": "Supabase URL or Key not configured"}
+            
+        supabase = get_supabase()
+        # Simple query to test connection
+        response = supabase.table("source_terms").select("id").limit(1).execute()
+        return {"status": "✅ SUCCESS", "data_received": len(response.data) if response.data else 0}
     except Exception as e:
         return {"status": "❌ FAILED", "error": str(e), "traceback": traceback.format_exc()}
 
@@ -82,7 +85,7 @@ def run_all_diagnostics() -> dict:
     return {
         "environment": {
             "is_vercel": settings.is_vercel,
-            "db_path": settings.db_path,
+            "has_supabase_url": bool(settings.supabase_url),
             "has_openai_key": bool(settings.openai_api_key),
             "image_model": settings.image_model,
             "has_telegram_token": bool(settings.telegram_bot_token),
